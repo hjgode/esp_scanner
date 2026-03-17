@@ -1,11 +1,14 @@
 import scapy.all as scapy
 import csv
 import requests
+import sys
 
 # sudo setcap cap_net_raw=eip $(readlink -f $(which python))
 
+devices=[]
 mac_list=[]
 mac_tuple=()
+_vendor_name="Espressif"
 
 def get_title(ip_adress):
     hearders = {'headers':'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:51.0) Gecko/20100101 Firefox/51.0'}
@@ -14,16 +17,25 @@ def get_title(ip_adress):
     title=al[al.find('<title>') + 7 : al.find('</title>')]
     return title
 
-def read_csv():
-    reader = csv.DictReader(open('macs_espressif.csv'))
+def get_status_tasmota(ip_adr):
+    # http://192.168.0.104/cm?cmnd=status
+    return
+
+def read_espressif_csv(vendor_name):
+    global mac_tuple
+    global mac_list
+#    reader = csv.DictReader(open('macs_espressif.csv'))
+    reader = csv.DictReader(open('mac-vendors-export.csv'))
     for row in reader:
-        mac_list.append(row['Mac Prefix'])
-#        print(row['Mac Prefix'])
+        if vendor_name.upper() in row['Vendor Name'].upper() : 
+            mac_list.append(row['Mac Prefix'])
+#            print(row['Mac Prefix'])
 #    print("len list={}".format(len(mac_list)))
     mac_tuple = tuple(mac_list)
     return mac_tuple
 
 def get_vendor(mac_adress):
+    global mac_tuple
     #if len(mac_tuple)==0:
     #   read_csv()
     #print("len={}".format(len(mac_tuple)))
@@ -31,6 +43,8 @@ def get_vendor(mac_adress):
     #myLookup = (myLookup[0:8])
 #    print("myLookup {}".format(myLookup))
     x=0
+#    print("myLookup: {} mac_tuple: {}".format(myLookup, mac_tuple))
+    
     if myLookup.startswith(mac_tuple):
         #if myLookup in mac_tuple:
         #x = mac_list.index(mylookup)
@@ -41,6 +55,7 @@ def get_vendor(mac_adress):
     return x
 
 def scan(ip_range):
+    global devices
     print(f"Scanning IP range: {ip_range}")
     arp_request = scapy.ARP(pdst=ip_range)
     broadcast = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
@@ -53,12 +68,14 @@ def scan(ip_range):
         print("Responses received.")
     devices = []
     for element in answered_list:
-        device = {'ip': element[1].psrc, 'mac': element[1].hwsrc}
+
         x = get_vendor(element[1].hwsrc)
         if x == 1:
-            devices.append(device)
             title=get_title(element[1].psrc)
-            print("Title: {}".format(title))
+            device = {'ip': element[1].psrc, 'mac': element[1].hwsrc, 'title': title}
+            devices.append(device)
+
+            #print("Title: {}".format(title))
             #print(f"Device found: IP = {device['ip']}, MAC = {device['mac']}")
 
     return devices
@@ -66,19 +83,34 @@ def scan(ip_range):
 def display_devices(devices):
     if devices:
         print("found {} Espressif devices".format(len(devices)))
-        print("\nIP\t\t\tMAC Address for Espressif devices")
-        print("-----------------------------------------")
+        print("\nIP\t\t\tMAC Address\t\ttitle")
+        print("----------------------------------------------------------------")
         for device in devices:
-            print(f"{device['ip']}\t\t{device['mac']}")
+            print(f"{device['ip']}\t\t{device['mac']}\t\t{device['title']}")
     else:
         print("No devices found.")
+    return
+
 def scan_network(ip_range):
     devices = scan(ip_range)
     display_devices(devices)
+    return
 
-if __name__ == "__main__":
-    mac_tuple=read_csv()
-    print("comparing to {} known Espressif MAC adresses".format(len(mac_tuple)))
+def main():
+    global mac_tuple
+    _vendor_name="Espressif"
+    arglen=len(sys.argv)
+    if arglen == 2:
+        print("Usage: python espressif-scanner.py <arg1>")
+        _vendor_name = sys.argv[1]
+        print(f"Argument 1: {_vendor_name}")
+    
+    mac_tuple=read_espressif_csv(_vendor_name)
+    print("comparing to {} known {}  MAC adresses".format(len(mac_tuple), _vendor_name))
     ip_range = '192.168.0.0/24'
     scan_network(ip_range)
+    return
+
+if __name__ == "__main__":
+    main()
 
